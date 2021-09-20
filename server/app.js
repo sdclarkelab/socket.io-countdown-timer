@@ -16,8 +16,15 @@ const io = require("socket.io")(httpServer, {
   }
 });
 
+
+app.get('/', (req, res) => {
+  res.send('<h1>Hey Socket.io</h1>');
+});
+
+
 io.on("connection", socket => {
   console.log(`User ${socket.id} connected`);
+  io.in(socket.id).emit('timer-conn-status', `User ${socket.id} connected`);
 
   // ***********************************************************
   //                create-room event
@@ -26,7 +33,7 @@ io.on("connection", socket => {
     if (socket.rooms.size < 2) {
       const randomString = randomstring.generate(length);
       socket.join(randomString);
-      io.in(randomString).emit('timer', `Successfully created and joined '${randomString}' room `);
+      io.in(randomString).emit('create-room-msg', `Successfully created and joined '${randomString}' room `);
       console.log(`Successfully created and joined '${randomString}' room `);
 
       // Create room object.
@@ -41,7 +48,7 @@ io.on("connection", socket => {
       rooms.push(room);
 
     } else {
-      io.in(socket.id).emit(`Error, unable to create room`);
+      io.in(socket.id).emit('create-room-err-msg', `Error, unable to create room`);
       console.log(`Error, unable to create room`);
     }
   });
@@ -55,10 +62,10 @@ io.on("connection", socket => {
       socket.join(roomName);
 
       console.log('Successfully joined room: ' + roomName);
-      io.in(socket.id).emit('Successfully joined room: ' + roomName);
+      io.in(socket.id).emit('join-room-msg', `Successfully joined room: '${roomName}'`);
 
     } else {
-      io.in(socket.id).emit('Please provide room name.');
+      io.in(socket.id).emit('join-room-err-msg', 'Please provide room name.');
     }
   });
 
@@ -76,7 +83,7 @@ io.on("connection", socket => {
       const room = roomService.findRoom(rooms, socket);
       room.duration = duration;
 
-      io.in(socket.id).emit(`${duration} duration set`);
+      io.in(socket.id).emit('timer-duration', duration);
     }
   });
 
@@ -107,10 +114,12 @@ io.on("connection", socket => {
         clearInterval(timerId);
 
         rooms = roomService.removeRoom(rooms, socket);
+        room.duration = 0;
+        io.in(roomService.getRoomId(socket)).emit('set-timer-action', 0);
       }
 
     } else {
-      io.in(socket.id).emit('Please provide one of the following timer action: (pause, resume or stop)');
+      io.in(socket.id).emit('timer-room-action-err', 'Please provide one of the following timer action: (start, pause, resume or stop)');
     }
   });
 
@@ -119,28 +128,27 @@ io.on("connection", socket => {
   // ***********************************************************
   socket.on('disconnect', function () {
     console.log('User ' + socket.id + ' disconnected');
-    io.in(roomService.getRoomId(socket)).emit(`${socket.id} disconnected.`)
+    io.in(roomService.getRoomId(socket)).emit('timer-conn-status', `${socket.id} disconnected.`)
  });
 
  
   // ***********************************************************
   //                        Timer  
   // ***********************************************************
-  
   function startCountdownTimer(duration) {
 
     const room = roomService.findRoom(rooms, socket);
 
-    var timerId = setInterval(function () {
-      io.sockets.in(roomService.getRoomId(socket)).emit('timer', duration);
-
-      duration -= 1;
-      room.currentTime =  duration;
-    }, 1000, duration);
-
-    room.timerId = timerId;
+    if (duration != 0) {
+      var timerId = setInterval(function () {
+        io.sockets.in(roomService.getRoomId(socket)).emit('timer-countdown', duration);
+  
+        duration -= 1;
+        room.currentTime =  duration;
+      }, 1000, duration);
+      room.timerId = timerId;
+    }
   }
-
 });
 
 
